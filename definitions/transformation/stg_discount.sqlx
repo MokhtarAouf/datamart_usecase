@@ -1,0 +1,20 @@
+config {
+    type: "view",
+    schema: "dataform_staging",
+    name: "stg_discounts"
+}
+
+SELECT
+    EAN,
+    CAST(discountAmount AS FLOAT64) AS discountAmount,
+    FlagSiMarkdown,
+    FlagsiRebate,
+    magasin,
+    CAST(jour AS DATE) AS jour,
+    numero_ticket,
+    numero_ligne_ticket, -- La virgule était manquante ici
+    "Magasin" AS canal_vente
+FROM
+    ${ref("source_a_discounts")}
+WHERE 
+    numero_ticket IS NOT NULL

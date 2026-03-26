@@ -1,0 +1,21 @@
+config {
+    type: "view",
+    schema: "dataform_staging",
+    name: "stg_ventes_ecommerce",
+    description: "Nettoyage des ventes E-commerce"
+}
+
+SELECT
+    EAN,
+    CAST(quantite AS INT64) AS quantite,
+    CAST(jour AS DATE) AS date_vente,
+    -- On renomme pour matcher la structure Magasin
+    CAST(prixfull AS FLOAT64) AS prix_unitaire, 
+    CAST(amountdiscount AS FLOAT64) AS discountAmount,
+    numero_ticket,
+    numero_ligne_ticket, 
+    "Web" AS canal_vente
+FROM
+    ${ref("source_b_ecom")}
+WHERE 
+    EAN IS NOT NULL

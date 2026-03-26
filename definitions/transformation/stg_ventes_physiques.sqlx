@@ -1,0 +1,25 @@
+config {
+    type: "view",
+    schema: "dataform_staging",
+    name: "stg_ventes_physiques",
+    description: "Nettoyage des ventes en magasin"
+}
+
+SELECT
+    EAN,
+    CAST(quantite AS INT64) AS quantite,
+    CAST(jour AS DATE) AS jour,
+    magasin,
+    CAST(prix AS FLOAT64) AS prix, 
+    numero_ticket,
+    numero_ligne_ticket, 
+    "Magasin" AS canal_vente
+FROM
+    ${ref("source_a_ventes")}
+WHERE 
+    NOT (EAN IS NULL 
+         AND quantite IS NULL 
+         AND jour IS NULL 
+         AND numero_ticket IS NULL 
+         AND numero_ligne_ticket IS NULL
+         AND prix IS NULL)

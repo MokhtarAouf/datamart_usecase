@@ -1,0 +1,72 @@
+config {
+    type: "view",
+    schema: "dataform_staging",
+    name: "int_ventes_globales",
+    description: "Union des ventes Web et Magasin avec harmonisation des colonnes"
+}
+
+WITH union_sources AS (
+    -- 1. Ventes Magasin (D'après ton staging, la colonne s'appelle 'jour' et 'prix')
+    SELECT
+        v.EAN,
+        v.jour AS date_iso,      -- On harmonise le nom ici pour le WITH
+        v.magasin,
+        v.numero_ticket,
+        v.numero_ligne_ticket,
+        v.canal_vente,
+        v.quantite,
+        v.prix AS prix_brut,    -- On harmonise le nom ici
+        IFNULL(d.discountAmount, 0) AS remise
+    FROM
+        ${ref("stg_ventes_physiques")} v
+    LEFT JOIN
+        ${ref("stg_discounts")} d
+        ON v.numero_ticket = d.numero_ticket
+        AND v.numero_ligne_ticket = d.numero_ligne_ticket
+        AND v.EAN = d.EAN
+
+    UNION ALL
+
+    -- 2. Ventes Web (D'après ton staging : 'date_vente', 'prix_unitaire', 'discountAmount')
+    SELECT
+        EAN,
+        date_vente AS date_iso, -- On utilise le nom de TON staging ecommerce
+        "WEB" AS magasin,
+        numero_ticket,
+        numero_ligne_ticket,
+        canal_vente,
+        quantite,
+        prix_unitaire AS prix_brut, 
+        discountAmount AS remise
+    FROM
+        ${ref("stg_ventes_ecommerce")}
+),
+
+enriched AS (
+    SELECT
+        -- Clé de déduplication (Sécurisée avec CAST)
+        TO_BASE64(MD5(CONCAT(
+            CAST(numero_ticket AS STRING), "-",
+            CAST(numero_ligne_ticket AS STRING), "-",
+            CAST(EAN AS STRING)
+        ))) AS vente_id,
+
+        EAN,
+        date_iso AS jour, 
+        magasin,
+        canal_vente,
+        numero_ticket,
+        numero_ligne_ticket,
+        prix_brut AS prix_full,
+        remise AS discount_amount,
+        -- Calcul du prix net payé
+        GREATEST((prix_brut - remise), 0) AS prix_paye,
+        quantite,
+        -- Logique de Laurent pour les retours
+        CASE WHEN quantite > 0 THEN quantite ELSE 0 END AS quantite_vendue,
+        CASE WHEN quantite < 0 THEN ABS(quantite) ELSE 0 END AS quantite_retournee
+    FROM
+        union_sources
+)
+
+SELECT * FROM enriched
