@@ -6,7 +6,11 @@ config {
     bigquery: {
         partitionBy: "jour"
     },
-    description: "Table finale de ventes consolidées, partitionnée et dédoublonnée"
+    description: "Table finale de ventes consolidées, partitionnée et dédoublonnée",
+    assertions: {
+        nonNull: ["vente_id", "EAN", "jour", "prix_full", "prix_paye", "numero_ticket", "numero_ligne_ticket"],
+        uniqueKey: ["vente_id"]
+    }
 }
 
 SELECT
