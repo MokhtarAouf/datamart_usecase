@@ -6,16 +6,18 @@ config {
 }
 
 WITH union_sources AS (
-    -- 1. Ventes Magasin (D'après ton staging, la colonne s'appelle 'jour' et 'prix')
+
+    -- 1. Ventes Magasin (Source A)
     SELECT
         v.EAN,
-        v.jour AS date_iso,      -- On harmonise le nom ici pour le WITH
+        v.jour AS date_iso,
         v.magasin,
         v.numero_ticket,
         v.numero_ligne_ticket,
         v.canal_vente,
+        "A" AS source,
         v.quantite,
-        v.prix AS prix_brut,    -- On harmonise le nom ici
+        v.prix AS prix_brut,
         IFNULL(d.discountAmount, 0) AS remise
     FROM
         ${ref("stg_ventes_physiques")} v
@@ -27,16 +29,17 @@ WITH union_sources AS (
 
     UNION ALL
 
-    -- 2. Ventes Web (D'après ton staging : 'date_vente', 'prix_unitaire', 'discountAmount')
+    -- 2. Ventes Web (Source B)
     SELECT
         EAN,
-        date_vente AS date_iso, -- On utilise le nom de TON staging ecommerce
-        "WEB" AS magasin,
+        date_vente AS date_iso,
+        "SAK" AS magasin,
         numero_ticket,
         numero_ligne_ticket,
         canal_vente,
+        "B" AS source,
         quantite,
-        prix_unitaire AS prix_brut, 
+        prix_unitaire AS prix_brut,
         discountAmount AS remise
     FROM
         ${ref("stg_ventes_ecommerce")}
@@ -44,27 +47,53 @@ WITH union_sources AS (
 
 enriched AS (
     SELECT
-        -- Clé de déduplication (Sécurisée avec CAST)
+        -- Clé robuste (ajout magasin + date)
         TO_BASE64(MD5(CONCAT(
+            CAST(magasin AS STRING), "-",
+            CAST(date_iso AS STRING), "-",
             CAST(numero_ticket AS STRING), "-",
             CAST(numero_ligne_ticket AS STRING), "-",
             CAST(EAN AS STRING)
         ))) AS vente_id,
 
         EAN,
-        date_iso AS jour, 
+        date_iso AS jour,
         magasin,
         canal_vente,
+        source,
         numero_ticket,
         numero_ligne_ticket,
-        prix_brut AS prix_full,
+
+        -- prix_full : toujours le prix avant remise
+        CASE
+            WHEN source = "A" THEN prix_brut + remise  -- reconstruit le prix plein
+            ELSE prix_brut                             -- déjà le prix plein
+        END AS prix_full,
+
         remise AS discount_amount,
-        -- Calcul du prix net payé
-        GREATEST((prix_brut - remise), 0) AS prix_paye,
+
+        -- prix_paye : toujours ce qui a été réellement payé
+        GREATEST(
+            CASE
+                WHEN source = "A" THEN prix_brut        -- prix déjà après remise
+                ELSE prix_brut - remise                 -- on soustrait la remise
+            END,
+            0
+        ) AS prix_paye,
+
         quantite,
-        -- Logique de Laurent pour les retours
+
+        -- Gestion retours
         CASE WHEN quantite > 0 THEN quantite ELSE 0 END AS quantite_vendue,
-        CASE WHEN quantite < 0 THEN ABS(quantite) ELSE 0 END AS quantite_retournee
+        CASE WHEN quantite < 0 THEN ABS(quantite) ELSE 0 END AS quantite_retournee,
+
+        -- Bonus utile
+        CASE WHEN quantite < 0 THEN TRUE ELSE FALSE END AS is_return,
+
+        -- Champs demandés
+        CURRENT_TIMESTAMP() AS created_at,
+        CURRENT_TIMESTAMP() AS updated_at
+
     FROM
         union_sources
 )

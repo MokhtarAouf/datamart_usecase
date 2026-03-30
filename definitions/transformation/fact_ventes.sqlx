@@ -1,0 +1,30 @@
+config {
+    type: "incremental",
+    schema: "dataform",
+    name: "fact_ventes",
+    uniqueKey: ["vente_id"],
+    bigquery: {
+        partitionBy: "jour"
+    },
+    description: "Table finale de ventes consolidées, partitionnée et dédoublonnée"
+}
+
+SELECT
+    vente_id,
+    EAN,
+    jour,
+    magasin,
+    canal_vente,
+    numero_ticket,
+    numero_ligne_ticket,
+    prix_full,
+    discount_amount,
+    prix_paye,
+    quantite,
+    quantite_vendue,
+    quantite_retournee,
+    CURRENT_TIMESTAMP() AS dataform_updated_at
+FROM
+    ${ref("int_ventes_globales")}
+
+${when(incremental(), `WHERE jour >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)`)}
